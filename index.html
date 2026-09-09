@@ -298,6 +298,10 @@
   .cal-stat span{font-size:11px;color:var(--muted);}
   .cal-toast{position:fixed;left:50%;bottom:max(24px,env(safe-area-inset-bottom));z-index:10;transform:translate(-50%,20px);background:var(--text);color:var(--void);padding:11px 16px;border-radius:999px;font-size:13px;font-weight:700;opacity:0;pointer-events:none;transition:.2s ease;box-shadow:0 8px 24px rgba(0,0,0,.35);}
   .cal-toast.show{opacity:1;transform:translate(-50%,0);}
+  .cal-share{width:100%;min-height:46px;margin-top:12px;border:1px solid var(--amber);border-radius:9px;background:var(--amber-soft);color:var(--text);font-weight:700;letter-spacing:.2px;cursor:pointer;}
+  .cal-share:hover{background:rgba(216,174,98,.26);}
+  .cal-readonly{margin-bottom:16px;padding:11px 14px;border:1px solid var(--amber);border-radius:9px;background:var(--amber-soft);color:var(--text);font-size:13px;text-align:center;}
+  body.readonly .cal-form,body.readonly .cal-hint,body.readonly .cal-del,body.readonly .cal-share{display:none;}
   @media(max-width:420px){
     body{padding:0}.cal-wrap{padding:20px 12px 32px;border-radius:0}.cal-header{align-items:flex-end}.cal-month{font-size:24px}.cal-year{font-size:17px}.cal-grid,.cal-weekdays{gap:4px}.cal-day{padding:5px;border-radius:8px;min-height:43px}.cal-mark{display:none}.cal-day.has-normal::after,.cal-day.has-larga::after{content:'';width:5px;height:5px;border-radius:50%;background:currentColor;align-self:center}.cal-form{display:grid;grid-template-columns:1fr 1fr}.cal-field{min-width:0}.cal-form .cal-field:first-child{grid-column:1/-1}.cal-add-btn{min-height:46px}.cal-summary{margin-top:12px}}
   @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
@@ -310,6 +314,7 @@
     <div class="cal-seal" aria-hidden="true">墨</div>
     <div class="cal-brandcopy"><strong>DUVAN TATTOO</strong><span>Lealtad · Arte · Pasión</span></div>
   </div>
+  <div class="cal-readonly" id="readonlyBanner" hidden>Vista compartida · Solo lectura</div>
   <div class="cal-header">
     <div>
       <span class="cal-kicker">Agenda Tattoo</span>
@@ -333,6 +338,7 @@
     <div class="cal-stat"><strong id="monthCount">0</strong><span>Citas este mes</span></div>
     <div class="cal-stat"><strong id="monthHours">0h</strong><span>Horas reservadas</span></div>
   </div>
+  <button class="cal-share" id="shareBtn" type="button">Compartir agenda · Solo lectura</button>
 
   <div class="cal-legend">
     <span><span class="cal-dot normal"></span> Cita normal</span>
@@ -380,6 +386,7 @@
   let current = new Date();
   current.setDate(1);
   let selectedKey = null;
+  let readOnly = false;
 
   const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -394,6 +401,8 @@
   const inputHours = document.getElementById('inputHours');
   const inputNote = document.getElementById('inputNote');
   const toast = document.getElementById('toast');
+  const shareBtn = document.getElementById('shareBtn');
+  const readonlyBanner = document.getElementById('readonlyBanner');
   let toastTimer;
 
   function showToast(message){
@@ -409,8 +418,16 @@
 
   async function load(){
     try{
-      const saved = localStorage.getItem(STORAGE_KEY);
-      citas = saved ? JSON.parse(saved) : {};
+      const shared = new URLSearchParams(location.hash.slice(1)).get('ver');
+      if(shared){
+        citas = decodeShared(shared);
+        readOnly = true;
+        document.body.classList.add('readonly');
+        readonlyBanner.hidden = false;
+      }else{
+        const saved = localStorage.getItem(STORAGE_KEY);
+        citas = saved ? JSON.parse(saved) : {};
+      }
     }catch(e){
       citas = {};
     }
@@ -418,10 +435,40 @@
   }
 
   async function save(){
+    if(readOnly) return;
     try{
       localStorage.setItem(STORAGE_KEY, JSON.stringify(citas));
     }catch(e){
       console.error('No se pudo guardar', e);
+    }
+  }
+
+  function encodeShared(data){
+    const bytes = new TextEncoder().encode(JSON.stringify(data));
+    let binary = '';
+    bytes.forEach(byte=>binary += String.fromCharCode(byte));
+    return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+
+  function decodeShared(value){
+    const base64 = value.replace(/-/g,'+').replace(/_/g,'/') + '='.repeat((4-value.length%4)%4);
+    const binary = atob(base64);
+    const bytes = Uint8Array.from(binary,char=>char.charCodeAt(0));
+    const payload = JSON.parse(new TextDecoder().decode(bytes));
+    return payload && payload.citas && typeof payload.citas === 'object' ? payload.citas : {};
+  }
+
+  async function shareAgenda(){
+    const url = location.href.split('#')[0] + '#ver=' + encodeShared({v:1,citas});
+    try{
+      if(navigator.share){
+        await navigator.share({title:'Agenda Duvan Tattoo',text:'Agenda de citas en modo solo lectura',url});
+      }else{
+        await navigator.clipboard.writeText(url);
+        showToast('Enlace copiado');
+      }
+    }catch(e){
+      if(e.name !== 'AbortError') prompt('Copia este enlace para compartir:',url);
     }
   }
 
@@ -596,6 +643,7 @@
     render();
   });
   document.getElementById('addBtn').addEventListener('click', addCita);
+  shareBtn.addEventListener('click', shareAgenda);
   inputNote.addEventListener('keydown', e=>{if(e.key==='Enter') addCita();});
 
   load();

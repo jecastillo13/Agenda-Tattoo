@@ -1,4 +1,4 @@
-const CACHE_NAME = 'agenda-duvan-v1';
+const CACHE_NAME = 'agenda-duvan-v2';
 const APP_FILES = ['./', './index.html', './manifest.webmanifest', './icono-agenda.jpg'];
 
 self.addEventListener('install', event => {
